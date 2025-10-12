@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>37Rdoku - Cellular Automata Puzzle</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #board { margin: 20px auto; border-collapse: collapse; }
+        #board td { width: 40px; height: 40px; border: 1px solid #ccc; cursor: pointer; }
+        .unset { background-color: grey; }
+        .white { background-color: white; color: black; }
+        .black { background-color: black; color: white; }
+        .clue { cursor: default; }
+        button { margin: 10px; }
+        #rule-table { display: flex; flex-wrap: wrap; justify-content: center; }
+        .rule-vis { display: inline-block; margin: 10px; }
+        .rule-vis table { border-collapse: collapse; }
+        .rule-vis td { width: 20px; height: 20px; }
+    </style>
+</head>
+<body>
+    <h1>37Rdoku</h1>
+    <p><strong>How to Play:</strong> 37Rdoku is a logic puzzle based on the reversible Rule 37 elementary cellular automaton with periodic boundaries, as described in Wolfram's <a href="https://www.wolframscience.com/nks/" target="_blank">A New Kind of Science</a>. The grid evolves row by row: each cell in row t+1 is the XOR of the standard Rule 37 output for its neighborhood (left, center, right in row t) and the cell above in row t-1 (0 for the second row). Your goal is to fill the grey (unset) cells with white (0) or black (1) to make the entire grid consistent with this rule and the given clues. There's only one correct solution. Click on grey cells to cycle: grey → white (0) → black (1) → grey. Use the "Check" button to verify if your board is complete and correct. Use "Show Solution" to reveal the answer.</p>
+    <p><strong>Periodic Boundaries:</strong> The board uses periodic (wrap-around) boundaries, meaning the leftmost and rightmost cells in each row are considered adjacent, as if the board wraps upon itself like a cylinder.</p>
+    <h2>Rule 37R Visual Explanation</h2>
+    <p>The reversible Rule 37 (37R) computes each cell as follows: The standard Rule 37 output for the three-neighborhood (left, center, right in current row) XORed with the cell two rows above (or 0 for the second row).</p>
+    <p>Below are all 16 possible combinations shown as crosses (above, neighborhood, below):</p>
+    <div id="rule-table"></div>
+    <label for="size">Choose board size:</label>
+    <select id="size">
+        <option value="4">4x4</option>
+        <option value="8">8x8</option>
+        <option value="12">12x12</option>
+        <option value="16">16x16</option>
+    </select>
+    <label for="difficulty">Difficulty:</label>
+    <select id="difficulty">
+        <option value="hard">Hard</option>
+        <option value="medium">Medium</option>
+        <option value="easy">Easy</option>
+    </select>
+    <button onclick="startGame()">Start Game</button>
+    <div id="game">
+        <table id="board"></table>
+        <button onclick="checkWin()">Check</button>
+        <button onclick="showSolution()">Show Solution</button>
+        <button onclick="giveHint()">Hint</button>
+    </div>
+
+    <script>
+        let size, difficulty, rule = 37, boards, target, userGrid, clues = [], potentialHints = [];
+
+        function computeRuleBits() {
+            const bits = new Array(8);
+            for (let i = 0; i < 8; i++) {
+                bits[i] = (rule >> i) & 1;
+            }
+            return bits;
+        }
+
+        function computeBoard(initial, size, ruleBits) {
+            const grid = Array.from({length: size}, () => new Array(size).fill(0));
+            for (let col = 0; col < size; col++) {
+                grid[0][col] = (initial >> (size - 1 - col)) & 1;
+            }
+            for (let t = 0; t < size - 1; t++) {
+                for (let x = 0; x < size; x++) {
+                    const left = (x - 1 + size) % size;
+                    const right = (x + 1) % size;
+                    const neigh = grid[t][left] * 4 + grid[t][x] * 2 + grid[t][right] * 1;
+                    const ruleOutput = ruleBits[neigh];
+                    const xorTerm = (t === 0) ? 0 : grid[t - 1][x];
+                    grid[t + 1][x] = ruleOutput ^ xorTerm;
+                }
+            }
+            return grid;
+        }
+
+        function precomputeBoards(size, ruleBits) {
+            const numInitial = 1 << size;
+            const boards = new Array(numInitial);
+            for (let k = 0; k < numInitial; k++) {
+                boards[k] = computeBoard(k, size, ruleBits);
+            }
+            return boards;
+        }
+
+        function generateClues(difficulty) {
+            const targetIndex = Math.floor(Math.random() * (1 << size));
+            target = boards[targetIndex];
+            let possibleIndices = Array.from({length: 1 << size}, (_, i) => i);
+            const constrained = Array.from({length: size}, () => new Array(size).fill(false));
+            let available = [];
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    available.push([r, c]);
+                }
+            }
+            clues = [];
+            while (possibleIndices.length > 1 && available.length > 0) {
+                const idx = Math.floor(Math.random() * available.length);
+                const [row, col] = available[idx];
+                const val = target[row][col];
+                const tempPossible = possibleIndices.filter(p => boards[p][row][col] === val);
+                const count = tempPossible.length;
+                if (count > 0 && count < possibleIndices.length) {
+                    possibleIndices = tempPossible;
+                    clues.push([row, col, val]);
+                    constrained[row][col] = true;
+                    available.splice(idx, 1);
+                } else {
+                    // Skip if not reducing
+                }
+            }
+            let extra = 0;
+            if (difficulty === 'medium') {
+                extra = size;
+            } else if (difficulty === 'easy') {
+                extra = 2 * size;
+            }
+            for (let i = 0; i < extra && available.length > 0; i++) {
+                const idx = Math.floor(Math.random() * available.length);
+                const [row, col] = available[idx];
+                const val = target[row][col];
+                clues.push([row, col, val]);
+                constrained[row][col] = true;
+                available.splice(idx, 1);
+            }
+            potentialHints = available;
+        }
+
+        function initUserGrid() {
+            userGrid = Array.from({length: size}, () => new Array(size).fill(-1)); // -1 unset
+            clues.forEach(([row, col, val]) => {
+                userGrid[row][col] = val;
+            });
+        }
+
+        function renderBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = '';
+            for (let r = 0; r < size; r++) {
+                const tr = document.createElement('tr');
+                for (let c = 0; c < size; c++) {
+                    const td = document.createElement('td');
+                    updateCell(td, r, c);
+                    if (clues.some(([cr, cc]) => cr === r && cc === c)) {
+                        td.classList.add('clue');
+                    } else {
+                        td.onclick = () => toggleCell(r, c);
+                    }
+                    tr.appendChild(td);
+                }
+                board.appendChild(tr);
+            }
+        }
+
+        function updateCell(td, r, c) {
+            const val = userGrid[r][c];
+            td.className = '';
+            if (val === -1) {
+                td.classList.add('unset');
+            } else if (val === 0) {
+                td.classList.add('white');
+            } else {
+                td.classList.add('black');
+            }
+        }
+
+        function toggleCell(r, c) {
+            userGrid[r][c] = (userGrid[r][c] + 2) % 3 - 1; // -1 -> 0 -> 1 -> -1
+            const td = document.getElementById('board').rows[r].cells[c];
+            updateCell(td, r, c);
+        }
+
+        function checkWin() {
+            let complete = true;
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    if (userGrid[r][c] !== target[r][c]) {
+                        alert('Keep trying!');
+                        return;
+                    }
+                    if (userGrid[r][c] === -1) complete = false;
+                }
+            }
+            if (!complete) {
+                alert('Keep trying!');
+                return;
+            }
+            alert('Congratulations! You solved the puzzle.');
+        }
+
+        function showSolution() {
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    userGrid[r][c] = target[r][c];
+                }
+            }
+            renderBoard();
+        }
+
+        function giveHint() {
+            if (potentialHints.length === 0) {
+                alert('No more hints!');
+                return;
+            }
+            const idx = Math.floor(Math.random() * potentialHints.length);
+            const [row, col] = potentialHints[idx];
+            const val = target[row][col];
+            clues.push([row, col, val]);
+            userGrid[row][col] = val;
+            potentialHints.splice(idx, 1);
+            renderBoard();
+        }
+
+        function createTd(val) {
+            const td = document.createElement('td');
+            td.style.backgroundColor = val ? 'black' : 'white';
+            td.style.border = '1px solid #ccc';
+            return td;
+        }
+
+        function createEmptyTd() {
+            const td = document.createElement('td');
+            td.style.border = 'none';
+            return td;
+        }
+
+        function generateRuleTable() {
+            const ruleBits = computeRuleBits();
+            const container = document.getElementById('rule-table');
+            for (let i = 0; i < 16; i++) {
+                const above = (i >> 3) & 1;
+                const left = (i >> 2) & 1;
+                const center = (i >> 1) & 1;
+                const right = i & 1;
+                const neigh = left * 4 + center * 2 + right;
+                const ruleOutput = ruleBits[neigh];
+                const below = ruleOutput ^ above;
+
+                const visDiv = document.createElement('div');
+                visDiv.className = 'rule-vis';
+                const tbl = document.createElement('table');
+
+                // Row 1: above
+                let tr1 = document.createElement('tr');
+                tr1.appendChild(createEmptyTd());
+                tr1.appendChild(createTd(above));
+                tr1.appendChild(createEmptyTd());
+                tbl.appendChild(tr1);
+
+                // Row 2: left center right
+                let tr2 = document.createElement('tr');
+                tr2.appendChild(createTd(left));
+                tr2.appendChild(createTd(center));
+                tr2.appendChild(createTd(right));
+                tbl.appendChild(tr2);
+
+                // Row 3: below
+                let tr3 = document.createElement('tr');
+                tr3.appendChild(createEmptyTd());
+                tr3.appendChild(createTd(below));
+                tr3.appendChild(createEmptyTd());
+                tbl.appendChild(tr3);
+
+                visDiv.appendChild(tbl);
+                container.appendChild(visDiv);
+            }
+        }
+
+        function startGame() {
+            size = parseInt(document.getElementById('size').value);
+            difficulty = document.getElementById('difficulty').value;
+            const ruleBits = computeRuleBits();
+            boards = precomputeBoards(size, ruleBits);
+            generateClues(difficulty);
+            initUserGrid();
+            renderBoard();
+        }
+
+        window.onload = generateRuleTable;
+    </script>
+</body>
+</html>
