@@ -30,6 +30,7 @@
     <label for="size">Choose board size:</label>
     <select id="size">
         <option value="4">4x4</option>
+        <option value="5">5x5</option>
         <option value="6">6x6</option>
         <option value="8">8x8</option>
         <option value="12">12x12</option>
@@ -37,9 +38,9 @@
     </select>
     <label for="difficulty">Difficulty:</label>
     <select id="difficulty">
-        <option value="hard">Hard</option>
+        <option value="easy" selected="selected">Easy</option>
         <option value="medium">Medium</option>
-        <option value="easy">Easy</option>
+        <option value="hard">Hard</option>
     </select>
     <button onclick="startGame()">Start Game</button>
     <div id="game">
